@@ -30,4 +30,22 @@ public class User extends BaseEntity {
     @Column
     private OAuth oauthProvider;
 
+    private User(String email, String password) {
+        this.email = email;
+        this.password = password;
+    }
+
+    private User(String email, String oauthId, OAuth oauthProvider) {
+        this.email = email;
+        this.oauthId = oauthId;
+        this.oauthProvider = oauthProvider;
+    }
+
+    public static User create(String email, String password) {
+        return new User(email, password);
+    }
+
+    public static User createWithOAuth(String email, String oauthId, OAuth oauthProvider) {
+        return new User(email, oauthId, oauthProvider);
+    }
 }
