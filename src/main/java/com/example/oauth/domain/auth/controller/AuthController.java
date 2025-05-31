@@ -6,22 +6,24 @@ import com.example.oauth.domain.auth.dto.request.SignInRequest;
 import com.example.oauth.domain.auth.dto.request.SignUpRequest;
 import com.example.oauth.domain.auth.dto.response.SignUpResponse;
 import com.example.oauth.domain.auth.service.AuthService;
+import com.example.oauth.domain.auth.service.OAuthService;
 import com.example.oauth.domain.user.entity.User;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.io.IOException;
 
 @RestController
 @RequiredArgsConstructor
 public class AuthController {
 
     private final AuthService authService;
+    private final OAuthService oAuthService;
 
     @PostMapping("/sign-up")
     public ResponseEntity<SignUpResponse> signUp (
@@ -46,4 +48,13 @@ public class AuthController {
         Long userId = authUser.getId();
         return ResponseEntity.ok("User ID: " + userId);
     }
+
+    @GetMapping("/sign-in/kakao")
+    public ResponseEntity<String> callback(
+            @RequestParam("code") String code) throws IOException {
+        String accessToken = oAuthService.getAccessTokenFromKakao(code);
+        return ResponseEntity.ok(accessToken);
+    }
+
+
 }

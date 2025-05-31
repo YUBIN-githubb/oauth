@@ -17,3 +17,6 @@ spring:
         dialect: org.hibernate.dialect.MySQLDialect
         format_sql: true
 
+kakao:
+  client-id: ${REST_API_KEY}
+  redirect-uri: http://localhost:8080/sign-in/kakao
