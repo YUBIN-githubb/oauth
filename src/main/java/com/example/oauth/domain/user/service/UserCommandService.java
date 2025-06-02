@@ -1,5 +1,6 @@
 package com.example.oauth.domain.user.service;
 
+import com.example.oauth.common.enums.OAuth;
 import com.example.oauth.common.exception.CustomException;
 import com.example.oauth.domain.user.entity.User;
 import com.example.oauth.domain.user.repository.UserRepository;
@@ -21,6 +22,10 @@ public class UserCommandService {
     public User create(String email, String password) {
         User user = User.create(email, password);
         return userRepository.save(user);
+    }
+
+    public User createByKakao(String email, Long oauthId, String oauthRefreshToken) {
+        return userRepository.save(User.createWithOAuth(email, oauthId, OAuth.KAKAO, oauthRefreshToken));
     }
 
     public void delete(Long id) {

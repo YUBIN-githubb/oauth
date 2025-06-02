@@ -9,5 +9,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @AllArgsConstructor
 public class KakaoOAuthProperties {
     private String clientId;
+    private String tokenUri;
     private String redirectUri;
+    private String userInfoUri;
 }

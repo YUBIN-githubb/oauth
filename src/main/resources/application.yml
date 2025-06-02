@@ -19,4 +19,6 @@ spring:
 
 kakao:
   client-id: ${REST_API_KEY}
+  token-uri: https://kauth.kakao.com/oauth/token
   redirect-uri: http://localhost:8080/sign-in/kakao
+  userinfo-uri: https://kapi.kakao.com/v2/user/me

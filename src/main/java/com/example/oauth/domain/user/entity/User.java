@@ -24,28 +24,36 @@ public class User extends BaseEntity {
     private String password;
 
     @Column
-    private String oauthId;
+    private Long oauthId;
 
     @Enumerated(EnumType.STRING)
     @Column
     private OAuth oauthProvider;
+
+    @Column
+    private String oauthRefreshToken;
 
     private User(String email, String password) {
         this.email = email;
         this.password = password;
     }
 
-    private User(String email, String oauthId, OAuth oauthProvider) {
+    private User(String email, Long oauthId, OAuth oauthProvider, String oauthRefreshToken) {
         this.email = email;
         this.oauthId = oauthId;
         this.oauthProvider = oauthProvider;
+        this.oauthRefreshToken = oauthRefreshToken;
     }
 
     public static User create(String email, String password) {
         return new User(email, password);
     }
 
-    public static User createWithOAuth(String email, String oauthId, OAuth oauthProvider) {
-        return new User(email, oauthId, oauthProvider);
+    public static User createWithOAuth(String email, Long oauthId, OAuth oauthProvider, String oauthRefreshToken) {
+        return new User(email, oauthId, oauthProvider, oauthRefreshToken);
+    }
+
+    public void updateRefreshToken(String refreshToken) {
+        this.oauthRefreshToken = refreshToken;
     }
 }

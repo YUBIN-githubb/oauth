@@ -12,7 +12,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -50,11 +49,18 @@ public class AuthController {
     }
 
     @GetMapping("/sign-in/kakao")
-    public ResponseEntity<String> callback(
-            @RequestParam("code") String code) throws IOException {
-        String accessToken = oAuthService.getAccessTokenFromKakao(code);
-        return ResponseEntity.ok(accessToken);
+    public ResponseEntity<String> signInWithKakao(
+            @RequestParam("code") String code,
+            HttpSession session,
+            HttpServletResponse response) throws IOException {
+        User user = oAuthService.signInWithKakao(session, response, code);
+        return ResponseEntity.ok("Success Sign-In User ID: " + user.getId());
     }
 
-
+    @GetMapping("/renew/kakao")
+    public ResponseEntity<String> renewKakaoToken(
+            @Auth AuthUser authUser) {
+        oAuthService.renewKakaoAccessToken(authUser.getId());
+        return ResponseEntity.ok("Success Renew Token");
+    }
 }

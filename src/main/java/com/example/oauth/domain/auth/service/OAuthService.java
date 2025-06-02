@@ -1,54 +1,104 @@
 package com.example.oauth.domain.auth.service;
 
-import com.example.oauth.common.dto.OAuthUser;
+import com.example.oauth.common.config.KakaoOAuthProperties;
+import com.example.oauth.common.dto.AuthUser;
+import com.example.oauth.common.exception.CustomException;
 import com.example.oauth.domain.auth.dto.response.KakaoTokenResponse;
+import com.example.oauth.domain.auth.dto.response.KakaoUserInfoResponse;
+import com.example.oauth.domain.auth.dto.response.RenewKakaoTokenResponse;
+import com.example.oauth.domain.user.entity.User;
+import com.example.oauth.domain.user.service.UserCommandService;
+import com.example.oauth.domain.user.service.UserQueryService;
 import io.netty.handler.codec.http.HttpHeaderValues;
-import lombok.Getter;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class OAuthService {
 
+    private final KakaoOAuthProperties kakaoOAuthProperties;
+    private final UserQueryService userQueryService;
+    private final UserCommandService userCommandService;
     private final WebClient webClient;
-    @Getter
-    @Value("${kakao.client-id}")
-    private String clientId;
 
-    public OAuthService(WebClient webClient) {
-        this.webClient = webClient;
-    }
-
-    public String getAccessTokenFromKakao(String code) {
-        KakaoTokenResponse kakaoTokenResponseDto = WebClient.create("https://kauth.kakao.com").post()
-                .uri(uriBuilder -> uriBuilder
-                        .scheme("https")
-                        .path("/oauth/token")
-                        .queryParam("grant_type", "authorization_code")
-                        .queryParam("client_id", clientId)
-                        .queryParam("code", code)
-                        .build(true))
-                .header(HttpHeaders.CONTENT_TYPE, HttpHeaderValues.APPLICATION_X_WWW_FORM_URLENCODED.toString())
+    public KakaoTokenResponse getAccessTokenFromKakao(String code) {
+        return webClient.post().uri(kakaoOAuthProperties.getTokenUri())
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_FORM_URLENCODED_VALUE)
+                .body(BodyInserters.fromFormData("grant_type", "authorization_code")
+                        .with("client_id", kakaoOAuthProperties.getClientId())
+                        .with("code", code)
+                        .with("redirect_uri", kakaoOAuthProperties.getRedirectUri()))
                 .retrieve()
-                //TODO : Custom Exception
-                .onStatus(HttpStatusCode::is4xxClientError, clientResponse -> Mono.error(new RuntimeException("Invalid Parameter")))
-                .onStatus(HttpStatusCode::is5xxServerError, clientResponse -> Mono.error(new RuntimeException("Internal Server Error")))
+                .onStatus(HttpStatusCode::is4xxClientError, clientResponse -> Mono.error(new RuntimeException("Invalid Parameter While Get Access Token")))
+                .onStatus(HttpStatusCode::is5xxServerError, clientResponse -> Mono.error(new RuntimeException("Internal Server Error While Get Access Token")))
                 .bodyToMono(KakaoTokenResponse.class)
                 .block();
 
-        log.info(" [Kakao Service] Access Token ------> {}", kakaoTokenResponseDto.getAccessToken());
-        log.info(" [Kakao Service] Refresh Token ------> {}", kakaoTokenResponseDto.getRefreshToken());
-        //제공 조건: OpenID Connect가 활성화 된 앱의 토큰 발급 요청인 경우 또는 scope에 openid를 포함한 추가 항목 동의 받기 요청을 거친 토큰 발급 요청인 경우
-        log.info(" [Kakao Service] Id Token ------> {}", kakaoTokenResponseDto.getIdToken());
-        log.info(" [Kakao Service] Scope ------> {}", kakaoTokenResponseDto.getScope());
+    }
 
+    public KakaoUserInfoResponse getUserInfoFromKakao(String accessToken) {
+        return webClient.get().uri(kakaoOAuthProperties.getUserInfoUri())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, clientResponse -> Mono.error(new RuntimeException("Invalid Parameter While Get User Info")))
+                .onStatus(HttpStatusCode::is5xxServerError, clientResponse -> Mono.error(new RuntimeException("Internal Server Error While Get User Info")))
+                .bodyToMono(KakaoUserInfoResponse.class)
+                .block();
+    }
 
-        return kakaoTokenResponseDto.getAccessToken();
+    public User signInWithKakao(HttpSession session, HttpServletResponse response, String code) {
+        KakaoTokenResponse kakaoTokenResponse = getAccessTokenFromKakao(code);
+        KakaoUserInfoResponse kakaoUserInfoResponse = getUserInfoFromKakao(kakaoTokenResponse.getAccessToken());
+
+        // 이메일 정보가 없다면 회원가입
+        User user = userQueryService.getByEmail(kakaoUserInfoResponse.getKakaoAccount().getEmail())
+                .orElseGet(() -> userCommandService.createByKakao(
+                        kakaoUserInfoResponse.getKakaoAccount().getEmail()
+                        ,kakaoUserInfoResponse.getId()
+                        ,kakaoTokenResponse.getRefreshToken()
+                ));
+
+        AuthUser authUser = AuthUser.create(user.getId());
+        session.setAttribute("authUser", authUser);
+
+        Cookie sessionCookie = new Cookie("JSESSIONID", session.getId());
+        sessionCookie.setPath("/");
+        sessionCookie.setMaxAge(24 * 60 * 60);
+        sessionCookie.setHttpOnly(true);
+        response.addCookie(sessionCookie);
+        return user;
+    }
+
+    public void renewKakaoAccessToken(Long userId) {
+        User foundUser = userQueryService.findById(userId);
+        String oauthRefreshToken = foundUser.getOauthRefreshToken();
+
+        RenewKakaoTokenResponse renewKakaoTokenResponse = webClient.post().uri(kakaoOAuthProperties.getTokenUri())
+                .body(BodyInserters
+                        .fromFormData("grant_type", "refresh_token")
+                        .with("client_id", kakaoOAuthProperties.getClientId())
+                        .with("refresh_token", oauthRefreshToken))
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, clientResponse -> Mono.error(new RuntimeException("Invalid Parameter")))
+                .onStatus(HttpStatusCode::is5xxServerError, clientResponse -> Mono.error(new RuntimeException("Internal Server Error")))
+                .bodyToMono(RenewKakaoTokenResponse.class)
+                .block();
+
+         if (renewKakaoTokenResponse.getRefreshToken() != null)  {
+             foundUser.updateRefreshToken(renewKakaoTokenResponse.getRefreshToken());
+         }
     }
 }
